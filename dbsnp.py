@@ -12,25 +12,26 @@ import itertools
 class SnpInfo:
     dbsnp_id: str
     assembly_id: str
-    dna_change: str
-    aa_change: str
-    rna_change: str
     gene_name: str
     gene_abbr: str
     gene_id: str
-    proteins: List[str]
-
+    dna_change: List[str]
+    rnas: str
+    rna_change: List[str]
+    proteins: str
+    aa_change: List[str]
 
 def snp2csv(cl, out):
     print(cl.dbsnp_id,
           cl.assembly_id,
-          cl.dna_change,
-          cl.aa_change,
-          cl.rna_change,
           cl.gene_name,
           cl.gene_abbr,
           cl.gene_id,
+          cl.dna_change,
+          cl.rnas,
+          cl.rna_change,
           cl.proteins,
+          cl.aa_change,
           sep='\t',
           file=out
           )
@@ -49,8 +50,8 @@ def main():
     # Here we parse through the files:
     print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
     with bz2.BZ2File(path, 'rb') as f_in, open('/home/llong/Downloads/refsnp-chrY.csv', 'w') as output:
-        print('dbsnp_id', 'assembly_id', 'dna_change', 'aa_change', 'rna_change', 'gene_name',
-              'gene_abbr', 'gene_id', 'proteins', sep='\t', file=output)
+        print('dbsnp_id', 'assembly_id', 'gene_name', 'gene_abbr', 'gene_id',
+              'dna_change', 'rna', 'rna_change', 'proteins', 'aa_change', sep='\t', file=output)
 
         for line in f_in:
             rs_obj = json.loads(line.decode('utf-8'))
@@ -73,46 +74,53 @@ def main():
                             gene_id = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['id']
                             rna_list_raw = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['rnas']
 
-                            proteins = []
-                            for t in range(len(rna_list_raw)):
-                                if 'product_id' in rna_list_raw[t]:
-                                    protein = rna_list_raw[t][
-                                        'product_id']  # the protein affected by the mutation
-                                    proteins.append(protein)
+                            for nuc in rna_list_raw:
+                                if 'id' in nuc:
+                                    rnas = nuc['id'] # the rna transcript affected by the mutation
+                                else:
+                                    rnas = ''
+                                if 'product_id' in nuc:
+                                    proteins = nuc['product_id']  # the protein affected by the mutation
+                                else:
+                                    proteins = ''
 
-                            # Here I parse through each hgvs entry and assign it to either a nuc. change or a.a. change
-                            hgvs_entries = rs_obj['primary_snapshot_data']['placements_with_allele']
-                            dna_change = aa_change = rna_change = ''
-                            for num, entry in enumerate(hgvs_entries):
-                                seq_type = entry['placement_annot']['seq_type']
-                                for variant in entry['alleles']:
-                                    assembly_id2 = hgvs_entries[num]['seq_id']
-                                    hgvs = variant['hgvs']
-                                    hgvs = re.split(":[cgmnopr].", hgvs)
-                                    if len(hgvs) > 1:
-                                        if (seq_type == 'refseq_chromosome') or (seq_type == 'refseq_genomic'):
-                                            dna_change = hgvs[1]
-                                        elif seq_type == 'refseq_prot':
-                                            aa_change = hgvs[1]
-                                        elif seq_type == 'refseq_mrna':
-                                            rna_change = hgvs[1]
+                                # Here I parse through each hgvs entry and assign it to either a nuc. change or a.a. change
+                                hgvs_entries = rs_obj['primary_snapshot_data']['placements_with_allele']
+                                dna_change = []
+                                aa_change = []
+                                rna_change = []
+                                for entry in hgvs_entries:
+                                    for variant in entry['alleles']:
+                                        hgvs = re.split(":[cgmnopr].", variant['hgvs'])
+                                        if len(hgvs) > 1:
+                                            if hgvs[0] == assembly_id:
+                                                dna_change.append(hgvs[1])
+                                            elif hgvs[0] == proteins:
+                                                aa_change.append(hgvs[1])
+                                            elif hgvs[0] == rnas:
+                                                rna_change.append(hgvs[1])
+                                            else:
+                                                continue
 
-                                    if assembly_id2 == assembly_id: # if this information corresponds with one of our gene entries...
-                                        snp_infos = SnpInfo(dbsnp_id,
-                                                            assembly_id,
-                                                            dna_change,
-                                                            aa_change,
-                                                            rna_change,
-                                                            gene_name,
-                                                            gene_abbr,
-                                                            gene_id,
-                                                            proteins
-                                                            )
+                                max_list = max(len(dna_change), len(rna_change), len(aa_change))
+                                for i in [dna_change, rna_change, aa_change]:
+                                    diff = abs(max_list - len(i))
+                                    i.extend(list(itertools.repeat('', diff)))
 
-                                        snp2csv(snp_infos, output)
+                                for n in range(max_list):
+                                    snp_infos = SnpInfo(dbsnp_id,
+                                                        assembly_id,
+                                                        gene_name,
+                                                        gene_abbr,
+                                                        gene_id,
+                                                        dna_change[n],
+                                                        rnas,
+                                                        rna_change[n],
+                                                        proteins,
+                                                        aa_change[n]
+                                                        )
 
-                                    else:
-                                        continue
+                                    snp2csv(snp_infos, output)
 
     print("Finished writing files to CSV.")
 
