@@ -24,6 +24,7 @@ class SnpInfo:
     prot_type: str
     aa_change: List[str]
 
+
 def snp2csv(cl, out):
     print('rs' + cl.dbsnp_id,
           cl.assembly_id,
@@ -43,11 +44,14 @@ def snp2csv(cl, out):
           )
 
 
-def main():
+chroms = list(range(1, 23)) + ['X', 'Y', 'MT']
+
+
+def main(chrom):
     # Here we begin the downloading of JSON files from the dbSNP database:
 
-    url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chrY.json.bz2'
-    path = '/home/llong/Downloads/refsnp-chrY.json.bz2'
+    url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chr{}.json.bz2'.format(chrom)
+    path = '/home/llong/Downloads/refsnp-chr{}.json.bz2'.format(chrom)
     if not os.path.exists(path):
         print('Beginning file download with urllib2...')
         urllib.request.urlretrieve(url, path)
@@ -55,7 +59,7 @@ def main():
 
     # Here we parse through the files:
     print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
-    with bz2.BZ2File(path, 'rb') as f_in, open('/home/llong/Downloads/refsnp-chrY.csv', 'w') as output:
+    with bz2.BZ2File(path, 'rb') as f_in, open('/home/llong/Downloads/refsnp-chr{}.csv'.format(chrom), 'w') as output:
         print('dbsnp_id', 'assembly_id', 'assembly_type', 'gene_name', 'gene_abbr', 'entrez_id',
               'dna_change', 'rna', 'rna_type', 'rna_change', 'proteins', 'protein_type', 'aa_change',
               sep='\t', file=output)
@@ -64,12 +68,14 @@ def main():
             rs_obj = json.loads(line.decode('utf-8'))
             dbsnp_id = rs_obj['refsnp_id']  # the dbsnp id
 
-            all_ann_list_raw = rs_obj['primary_snapshot_data']['allele_annotations']  # these are the assembly annotations
+            all_ann_list_raw = rs_obj['primary_snapshot_data'][
+                'allele_annotations']  # these are the assembly annotations
 
             if len(all_ann_list_raw) >= 2:  # if it has sufficient info
                 assembl_ann_list_raw = all_ann_list_raw[1]['assembly_annotation']  # against each assembly
-                if len(assembl_ann_list_raw) != 0: # if it contains gene info
-                    gene_list_raw = assembl_ann_list_raw[0]['genes']  # and each of the genes affected within each assembly
+                if len(assembl_ann_list_raw) != 0:  # if it contains gene info
+                    gene_list_raw = assembl_ann_list_raw[0][
+                        'genes']  # and each of the genes affected within each assembly
                     if len(gene_list_raw) > 0:
                         # Here I start extracting gene info:
                         for x, y, z in itertools.product(range(len(all_ann_list_raw)),
@@ -98,7 +104,7 @@ def main():
 
                             for nuc in rna_list_raw:
                                 if 'id' in nuc:
-                                    rnas = nuc['id'] # the rna transcript affected by the mutation
+                                    rnas = nuc['id']  # the rna transcript affected by the mutation
                                     if rnas[0:2] == 'NM':
                                         rna_type = 'Protein-coding transcripts (usually curated)'
                                     elif rnas[0:2] == 'NR':
@@ -176,4 +182,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    for c in chroms:
+        main(c)
