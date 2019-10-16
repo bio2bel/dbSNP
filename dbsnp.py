@@ -12,25 +12,31 @@ import itertools
 class SnpInfo:
     dbsnp_id: str
     assembly_id: str
+    gen_type: str
     gene_name: str
     gene_abbr: str
     gene_id: str
     dna_change: List[str]
     rnas: str
+    rna_type: str
     rna_change: List[str]
     proteins: str
+    prot_type: str
     aa_change: List[str]
 
 def snp2csv(cl, out):
-    print(cl.dbsnp_id,
+    print('rs' + cl.dbsnp_id,
           cl.assembly_id,
+          cl.gen_type,
           cl.gene_name,
           cl.gene_abbr,
           cl.gene_id,
           cl.dna_change,
           cl.rnas,
+          cl.rna_type,
           cl.rna_change,
           cl.proteins,
+          cl.prot_type,
           cl.aa_change,
           sep='\t',
           file=out
@@ -50,8 +56,9 @@ def main():
     # Here we parse through the files:
     print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
     with bz2.BZ2File(path, 'rb') as f_in, open('/home/llong/Downloads/refsnp-chrY.csv', 'w') as output:
-        print('dbsnp_id', 'assembly_id', 'gene_name', 'gene_abbr', 'gene_id',
-              'dna_change', 'rna', 'rna_change', 'proteins', 'aa_change', sep='\t', file=output)
+        print('dbsnp_id', 'assembly_id', 'assembly_type', 'gene_name', 'gene_abbr', 'entrez_id',
+              'dna_change', 'rna', 'rna_type', 'rna_change', 'proteins', 'protein_type', 'aa_change',
+              sep='\t', file=output)
 
         for line in f_in:
             rs_obj = json.loads(line.decode('utf-8'))
@@ -69,6 +76,21 @@ def main():
                                                          range(len(assembl_ann_list_raw)),
                                                          range(len(gene_list_raw))):
                             assembly_id = all_ann_list_raw[x]['assembly_annotation'][y]['seq_id']
+                            if assembly_id[0:2] == 'AC':
+                                gen_type = 'Complete genomic molecule, usually alternate assembly'
+                            elif assembly_id[0:2] == 'NC':
+                                gen_type = 'Complete genomic molecule, usually reference assembly'
+                            elif assembly_id[0:2] == 'NG':
+                                gen_type = 'Incomplete genomic region'
+                            elif assembly_id[0:2] == 'NT':
+                                gen_type = 'Contig or scaffold, clone-based or WGSa'
+                            elif assembly_id[0:2] == 'NW':
+                                gen_type = 'Contig or scaffold, primarily WGSa'
+                            elif assembly_id[0:2] == 'NZ':
+                                gen_type = 'Complete genomes and unfinished WGS data'
+                            else:
+                                gen_type = ''
+
                             gene_name = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['name']
                             gene_abbr = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['locus']
                             gene_id = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['id']
@@ -77,12 +99,37 @@ def main():
                             for nuc in rna_list_raw:
                                 if 'id' in nuc:
                                     rnas = nuc['id'] # the rna transcript affected by the mutation
+                                    if rnas[0:2] == 'NM':
+                                        rna_type = 'Protein-coding transcripts (usually curated)'
+                                    elif rnas[0:2] == 'NR':
+                                        rna_type = 'Non-protein-coding transcripts'
+                                    elif rnas[0:2] == 'XM':
+                                        rna_type = 'Predicted model protein-coding transcript'
+                                    elif rnas[0:2] == 'XR':
+                                        rna_type = 'Predicted model non-protein-coding transcript'
+                                    else:
+                                        rna_type = ''
                                 else:
                                     rnas = ''
+                                    rna_type = ''
                                 if 'product_id' in nuc:
                                     proteins = nuc['product_id']  # the protein affected by the mutation
+                                    if proteins[0:2] == 'AP':
+                                        prot_type = 'Annotated on AC_ alternate assembly'
+                                    elif proteins[0:2] == 'NP':
+                                        prot_type = 'Associated with an NM_ or NC_ accession'
+                                    elif proteins[0:2] == 'YP':
+                                        prot_type = 'Annotated on genomic molecules without an instantiated ' \
+                                                    'transcript record '
+                                    elif proteins[0:2] == 'XP':
+                                        prot_type = 'Predicted model, associated with an XM_ accession'
+                                    elif proteins[0:2] == 'WP':
+                                        prot_type = 'Non-redundant across multiple strains and species'
+                                    else:
+                                        prot_type = ''
                                 else:
                                     proteins = ''
+                                    prot_type = ''
 
                                 # Here I parse through each hgvs entry and assign it to either a nuc. change or a.a. change
                                 hgvs_entries = rs_obj['primary_snapshot_data']['placements_with_allele']
@@ -110,13 +157,16 @@ def main():
                                 for n in range(max_list):
                                     snp_infos = SnpInfo(dbsnp_id,
                                                         assembly_id,
+                                                        gen_type,
                                                         gene_name,
                                                         gene_abbr,
                                                         gene_id,
                                                         dna_change[n],
                                                         rnas,
+                                                        rna_type,
                                                         rna_change[n],
                                                         proteins,
+                                                        prot_type,
                                                         aa_change[n]
                                                         )
 
