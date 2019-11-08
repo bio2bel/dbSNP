@@ -36,10 +36,10 @@ def main():
     # Here we begin the downloading of JSON files from the dbSNP database:
 
     # Create tables
-    c.execute('CREATE TABLE dbsnp_id_MT (dbsnp_id)')
-    c.execute('CREATE TABLE dna_change_MT (dna_change, dbsnp_id)')
     c.execute('CREATE TABLE gene_MT (gene_name, symbol, entrez_id)')
     c.execute('CREATE TABLE snp2gene_MT (dbsnp_id, entrez_id)')
+    c.execute('CREATE TABLE dbsnp_id_MT (dbsnp_id)')
+    c.execute('CREATE TABLE dna_change_MT (dna_change, dbsnp_id)')
 
     url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chrMT.json.bz2'
     path = '/home/llong/Downloads/refsnp/refsnp-chrMT.json.bz2'
@@ -96,9 +96,13 @@ def main():
                             entrez_id = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['id']
 
                             # Here I make the gene table
-                            gene_list.append((gene_name, symbol, entrez_id))
+                            gene_tuple = (gene_name, symbol, entrez_id)
+                            if gene_tuple not in gene_list:
+                                gene_list.append(gene_tuple)
                             # Here I make an intermediary table
-                            snp2gene_list.append((dbsnp_id, entrez_id))
+                            id_tuple = (dbsnp_id, entrez_id)
+                            if id_tuple not in snp2gene_list:
+                                snp2gene_list.append(id_tuple)
 
                             rna_list_raw = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['rnas']
 
@@ -165,9 +169,6 @@ def main():
     conn.commit()
     c.executemany('INSERT INTO snp2gene_MT VALUES (?,?)', snp2gene_list)
     conn.commit()
-
-    print("Finished writing files to database")
-    conn.close()
 
 
 if __name__ == '__main__':
