@@ -6,40 +6,32 @@ import os
 import json
 import bz2
 import re
-from dataclasses import dataclass
-from typing import List
 import itertools
 import sqlite3
+import time
+
+t0 = time.time()
 
 conn = sqlite3.connect('dbsnp.db')
 c = conn.cursor()
 
-
-@dataclass
-class SnpInfo:
-    dbsnp_id: str
-    assembly_id: str
-    gen_type: str
-    gene_name: str
-    symbol: str
-    entrez_id: str
-    dna_change: List[str]
-    rnas: str
-    rna_type: str
-    rna_change: List[str]
-    proteins: str
-    prot_type: str
-    aa_change: List[str]
-
+""" dbsnp2db downloads data from dbSNP on NCBI, parses it, and organizes the information into a relational database
+which is easier to query for large data with many SNPs """
 
 def main():
-    # Here we begin the downloading of JSON files from the dbSNP database:
-
-    # Create tables
-    c.execute('CREATE TABLE gene_MT (gene_name, symbol, entrez_id)')
-    c.execute('CREATE TABLE snp2gene_MT (dbsnp_id, entrez_id)')
+    # Here we create tables for our database
     c.execute('CREATE TABLE dbsnp_id_MT (dbsnp_id)')
+    c.execute('CREATE TABLE snp2assembly_MT (dbsnp_id, assembly_id)')
+    c.execute('CREATE TABLE assembly_id_MT (assembly_id, genome_type)')
+    c.execute('CREATE TABLE snp2gene_MT (dbsnp_id, entrez_id)')
+    c.execute('CREATE TABLE gene_MT (gene_name, symbol, entrez_id)')
     c.execute('CREATE TABLE dna_change_MT (dna_change, dbsnp_id)')
+    c.execute('CREATE TABLE rna_MT (rnas, rna_type, entrez_id)')
+    c.execute('CREATE TABLE rna_change_MT (rna_change, dbsnp_id, rnas)')
+    c.execute('CREATE TABLE proteins_MT (proteins, prot_type, rnas, entrez_id)')
+    c.execute('CREATE TABLE aminoacid_change_MT (aa_change, dbsnp_id, proteins)')
+
+    # Here we begin the downloading of JSON files from the dbSNP database:
 
     url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chrMT.json.bz2'
     path = '/home/llong/Downloads/refsnp/refsnp-chrMT.json.bz2'
@@ -49,9 +41,15 @@ def main():
         print('...Finished file download with urllib2.')
 
     id_list = []
+    snp2assembly_list = []
+    assembly_list = []
     dna_change_list = []
+    rna_change_list = []
+    aa_change_list = []
     gene_list = []
     snp2gene_list = []
+    rna_list = []
+    prot_list = []
 
     # Here we parse through the files:
     print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
@@ -76,6 +74,13 @@ def main():
                                                          range(len(assembl_ann_list_raw)),
                                                          range(len(gene_list_raw))):
                             assembly_id = all_ann_list_raw[x]['assembly_annotation'][y]['seq_id']
+                            # Here I make the snp2assem table
+                            snp2assem_tuple = (dbsnp_id, assembly_id)
+                            if snp2assem_tuple not in snp2assembly_list:
+                                snp2assembly_list.append(snp2assem_tuple)
+                            else:
+                                continue
+
                             if assembly_id[0:2] == 'AC':
                                 gen_type = 'Complete genomic molecule, usually alternate assembly'
                             elif assembly_id[0:2] == 'NC':
@@ -90,6 +95,11 @@ def main():
                                 gen_type = 'Complete genomes and unfinished WGS data'
                             else:
                                 gen_type = ''
+
+                            # Here I make the assembly table
+                            assembly_tuple = (assembly_id, gen_type)
+                            if assembly_tuple not in assembly_list:
+                                assembly_list.append(assembly_tuple)
 
                             gene_name = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['name']
                             symbol = all_ann_list_raw[x]['assembly_annotation'][y]['genes'][z]['locus']
@@ -119,9 +129,11 @@ def main():
                                         rna_type = 'Predicted model non-protein-coding transcript'
                                     else:
                                         rna_type = ''
-                                else:
-                                    rnas = ''
-                                    rna_type = ''
+                                # Here I make the rna transcript table
+                                rna_tuple = (rnas, rna_type, entrez_id)
+                                if rna_tuple not in rna_list:
+                                    rna_list.append(rna_tuple)
+
                                 if 'product_id' in nuc:
                                     proteins = nuc['product_id']  # the protein affected by the mutation
                                     if proteins[0:2] == 'AP':
@@ -137,39 +149,60 @@ def main():
                                         prot_type = 'Non-redundant across multiple strains and species'
                                     else:
                                         prot_type = ''
-                                else:
-                                    proteins = ''
-                                    prot_type = ''
+                                # Here I make the protein table
+                                prot_tuple = (proteins, prot_type, rnas, entrez_id)
+                                if prot_tuple not in prot_list:
+                                    prot_list.append(prot_tuple)
 
                                 # Here I parse through each hgvs entry and assign it to either a nuc. change or a.a. change
                                 hgvs_entries = rs_obj['primary_snapshot_data']['placements_with_allele']
-                                dna_change = []
-                                aa_change = []
-                                rna_change = []
                                 for entry in hgvs_entries:
                                     for variant in entry['alleles']:
                                         hgvs = re.split(":[cgmnopr].", variant['hgvs'])
                                         if len(hgvs) > 1:
                                             if hgvs[0] == assembly_id:
-                                                dna_change.append(hgvs[1])
                                                 # Here I make the DNA change table
-                                                dna_change_list.append((hgvs[1], dbsnp_id))
+                                                dna_tuple = (hgvs[1], dbsnp_id)
+                                                if dna_tuple not in dna_change_list:
+                                                    dna_change_list.append(dna_tuple)
                                             elif hgvs[0] == proteins:
-                                                aa_change.append(hgvs[1])
+                                                # Here I make the Amino Acid change table
+                                                aa_tuple = (hgvs[1], dbsnp_id, proteins)
+                                                if aa_tuple not in aa_change_list:
+                                                    aa_change_list.append(aa_tuple)
                                             elif hgvs[0] == rnas:
-                                                rna_change.append(hgvs[1])
+                                                # Here I make the RNA change table
+                                                rna_tuple = (hgvs[1], dbsnp_id, rnas)
+                                                if rna_tuple not in rna_change_list:
+                                                    rna_change_list.append(rna_tuple)
                                             else:
                                                 continue
 
     c.executemany('INSERT INTO dbsnp_id_MT VALUES (?)', id_list)
     conn.commit()
-    c.executemany('INSERT INTO dna_change_MT VALUES (?,?)', dna_change_list)
+    c.executemany('INSERT INTO snp2assembly_MT VALUES (?,?)', snp2assembly_list)
     conn.commit()
-    c.executemany('INSERT INTO gene_MT VALUES (?,?,?)', gene_list)
+    c.executemany('INSERT INTO assembly_id_MT VALUES (?,?)', assembly_list)
     conn.commit()
     c.executemany('INSERT INTO snp2gene_MT VALUES (?,?)', snp2gene_list)
     conn.commit()
+    c.executemany('INSERT INTO gene_MT VALUES (?,?,?)', gene_list)
+    conn.commit()
+    c.executemany('INSERT INTO dna_change_MT VALUES (?,?)', dna_change_list)
+    conn.commit()
+    c.executemany('INSERT INTO rna_MT VALUES (?,?,?)', rna_list)
+    conn.commit()
+    c.executemany('INSERT INTO rna_change_MT VALUES (?,?,?)', rna_change_list)
+    conn.commit()
+    c.executemany('INSERT INTO proteins_MT VALUES (?,?,?,?)', prot_list)
+    conn.commit()
+    c.executemany('INSERT INTO aminoacid_change_MT VALUES (?,?,?)', aa_change_list)
+    conn.commit()
+    t1 = time.time()
+    totaltime = t1 - t0
+    print("Finished writing files to database in {} seconds.".format(totaltime))
 
 
 if __name__ == '__main__':
     main()
+
