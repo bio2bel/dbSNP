@@ -10,31 +10,32 @@ import itertools
 import sqlite3
 import time
 
-t0 = time.time()
-
 conn = sqlite3.connect('dbsnp.db')
 c = conn.cursor()
+
+chroms = list(range(1, 23)) + ['X', 'Y', 'MT']
 
 """ dbsnp2db downloads data from dbSNP on NCBI, parses it, and organizes the information into a relational database
 which is easier to query for large data with many SNPs """
 
-def main():
-    # Here we create tables for our database
-    c.execute('CREATE TABLE dbsnp_id_MT (dbsnp_id)')
-    c.execute('CREATE TABLE snp2assembly_MT (dbsnp_id, assembly_id)')
-    c.execute('CREATE TABLE assembly_id_MT (assembly_id, genome_type)')
-    c.execute('CREATE TABLE snp2gene_MT (dbsnp_id, entrez_id)')
-    c.execute('CREATE TABLE gene_MT (gene_name, symbol, entrez_id)')
-    c.execute('CREATE TABLE dna_change_MT (dna_change, dbsnp_id)')
-    c.execute('CREATE TABLE rna_MT (rnas, rna_type, entrez_id)')
-    c.execute('CREATE TABLE rna_change_MT (rna_change, dbsnp_id, rnas)')
-    c.execute('CREATE TABLE proteins_MT (proteins, prot_type, rnas, entrez_id)')
-    c.execute('CREATE TABLE aminoacid_change_MT (aa_change, dbsnp_id, proteins)')
+# Here we create tables for our database
+c.execute('CREATE TABLE dbsnp_id (dbsnp_id, chromosome)')
+c.execute('CREATE TABLE snp2assembly (dbsnp_id, assembly_id)')
+c.execute('CREATE TABLE assembly_id (assembly_id, genome_type)')
+c.execute('CREATE TABLE snp2gene (dbsnp_id, entrez_id)')
+c.execute('CREATE TABLE gene (gene_name, symbol, entrez_id)')
+c.execute('CREATE TABLE dna_change (dna_change, dbsnp_id)')
+c.execute('CREATE TABLE rna (rnas, rna_type, entrez_id)')
+c.execute('CREATE TABLE rna_change (rna_change, dbsnp_id, rnas)')
+c.execute('CREATE TABLE proteins (proteins, prot_type, rnas, entrez_id)')
+c.execute('CREATE TABLE aminoacid_change (aa_change, dbsnp_id, proteins)')
 
+def main(chrom):
+    t0 = time.time()
     # Here we begin the downloading of JSON files from the dbSNP database:
 
-    url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chrMT.json.bz2'
-    path = '/home/llong/Downloads/refsnp/refsnp-chrMT.json.bz2'
+    url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chr{}.json.bz2'.format(chrom)
+    path = '/home/llong/Downloads/refsnp/refsnp-chr{}.json.bz2'.format(chrom)
     if not os.path.exists(path):
         print('Beginning file download with urllib2...')
         urllib.request.urlretrieve(url, path)
@@ -52,13 +53,13 @@ def main():
     prot_list = []
 
     # Here we parse through the files:
-    print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
+    print('Now decompressing and reading JSON.bz2 files from chromosome {} with *bz2* and *json* ...'.format(chrom))
     with bz2.BZ2File(path, 'rb') as f_in:
         for line in f_in:
             rs_obj = json.loads(line.decode('utf-8'))
             dbsnp_id = rs_obj['refsnp_id']  # the dbsnp id
             # Make the dbsnp_id table for database
-            id_list.append((dbsnp_id,))
+            id_list.append((dbsnp_id, chrom))
 
             all_ann_list_raw = rs_obj['primary_snapshot_data'][
                 'allele_annotations']  # these are the assembly annotations
@@ -178,31 +179,32 @@ def main():
                                             else:
                                                 continue
 
-    c.executemany('INSERT INTO dbsnp_id_MT VALUES (?)', id_list)
+    c.executemany('INSERT INTO dbsnp_id VALUES (?, ?)', id_list)
     conn.commit()
-    c.executemany('INSERT INTO snp2assembly_MT VALUES (?,?)', snp2assembly_list)
+    c.executemany('INSERT INTO snp2assembly VALUES (?,?)', snp2assembly_list)
     conn.commit()
-    c.executemany('INSERT INTO assembly_id_MT VALUES (?,?)', assembly_list)
+    c.executemany('INSERT INTO assembly_id VALUES (?,?)', assembly_list)
     conn.commit()
-    c.executemany('INSERT INTO snp2gene_MT VALUES (?,?)', snp2gene_list)
+    c.executemany('INSERT INTO snp2gene VALUES (?,?)', snp2gene_list)
     conn.commit()
-    c.executemany('INSERT INTO gene_MT VALUES (?,?,?)', gene_list)
+    c.executemany('INSERT INTO gene VALUES (?,?,?)', gene_list)
     conn.commit()
-    c.executemany('INSERT INTO dna_change_MT VALUES (?,?)', dna_change_list)
+    c.executemany('INSERT INTO dna_change VALUES (?,?)', dna_change_list)
     conn.commit()
-    c.executemany('INSERT INTO rna_MT VALUES (?,?,?)', rna_list)
+    c.executemany('INSERT INTO rna VALUES (?,?,?)', rna_list)
     conn.commit()
-    c.executemany('INSERT INTO rna_change_MT VALUES (?,?,?)', rna_change_list)
+    c.executemany('INSERT INTO rna_change VALUES (?,?,?)', rna_change_list)
     conn.commit()
-    c.executemany('INSERT INTO proteins_MT VALUES (?,?,?,?)', prot_list)
+    c.executemany('INSERT INTO proteins VALUES (?,?,?,?)', prot_list)
     conn.commit()
-    c.executemany('INSERT INTO aminoacid_change_MT VALUES (?,?,?)', aa_change_list)
+    c.executemany('INSERT INTO aminoacid_change VALUES (?,?,?)', aa_change_list)
     conn.commit()
     t1 = time.time()
     totaltime = t1 - t0
-    print("Finished writing files to database in {} seconds.".format(totaltime))
+    print("Finished writing files from chromosome {} to the database in {} seconds.".format(chrom, totaltime))
 
 
 if __name__ == '__main__':
-    main()
+    for chrom in chroms:
+        main(chrom)
 
