@@ -19,8 +19,6 @@ chroms = list(range(1, 23)) + ['X', 'Y', 'MT']
 """ dbsnp2db downloads data from dbSNP on NCBI, parses it, and organizes the information into a relational database
 which is easier to query for large data with many SNPs """
 
-logging.info("Setting up the skeleton of the database...")
-
 # Here we create tables for our database
 c.execute('CREATE TABLE dbsnp_id (dbsnp_id, chromosome)')
 c.execute('CREATE TABLE snp2assembly (dbsnp_id, assembly_id)')
