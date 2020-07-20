@@ -9,14 +9,17 @@ import re
 import itertools
 import sqlite3
 import time
+import logging
 
-conn = sqlite3.connect('dbsnp.db')
+conn = sqlite3.connect('../output/dbsnp.db')
 c = conn.cursor()
 
 chroms = list(range(1, 23)) + ['X', 'Y', 'MT']
 
 """ dbsnp2db downloads data from dbSNP on NCBI, parses it, and organizes the information into a relational database
 which is easier to query for large data with many SNPs """
+
+logging.info("Setting up the skeleton of the database...")
 
 # Here we create tables for our database
 c.execute('CREATE TABLE dbsnp_id (dbsnp_id, chromosome)')
@@ -35,11 +38,11 @@ def main(chrom):
     # Here we begin the downloading of JSON files from the dbSNP database:
 
     url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chr{}.json.bz2'.format(chrom)
-    path = '/home/llong/Downloads/refsnp/refsnp-chr{}.json.bz2'.format(chrom)
+    path = '../data/refsnp/refsnp-chr{}.json.bz2'.format(chrom)
     if not os.path.exists(path):
-        print('Beginning file download with urllib2...')
+        logging.info('Beginning file download with urllib2...')
         urllib.request.urlretrieve(url, path)
-        print('...Finished file download with urllib2.')
+        logging.info('...Finished file download with urllib2.')
 
     id_list = []
     snp2assembly_list = []
@@ -53,7 +56,7 @@ def main(chrom):
     prot_list = []
 
     # Here we parse through the files:
-    print('Now decompressing and reading JSON.bz2 files from chromosome {} with *bz2* and *json* ...'.format(chrom))
+    logging.info('Now decompressing and reading JSON.bz2 files from chromosome {} with *bz2* and *json* ...'.format(chrom))
     with bz2.BZ2File(path, 'rb') as f_in:
         for line in f_in:
             rs_obj = json.loads(line.decode('utf-8'))
@@ -201,10 +204,18 @@ def main(chrom):
     conn.commit()
     t1 = time.time()
     totaltime = t1 - t0
-    print("Finished writing files from chromosome {} to the database in {} seconds.".format(chrom, totaltime))
+    logging.info("Finished writing files from chromosome {} to the database in {} seconds.".format(chrom, totaltime))
 
 
 if __name__ == '__main__':
-    for chrom in chroms:
-        main(chrom)
+    logging.basicConfig(filename='../output/sql_db.log',
+                    filemode='a',
+                    format='%(asctime)s %(message)s', 
+                    datefmt='%d/%m/%Y %I:%M:%S %p',
+                    level=logging.INFO)
+    try:
+        for chrom in chroms:
+            main(chrom)
+    except Exception:
+        logging.error("Fatal error in main loop", exc_info=True)
 

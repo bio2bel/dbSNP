@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import List
 import itertools
+import logging
 
 
 @dataclass
@@ -51,15 +52,15 @@ def main(chrom):
     # Here we begin the downloading of JSON files from the dbSNP database:
 
     url = 'ftp://ftp.ncbi.nih.gov/snp/latest_release/JSON/refsnp-chr{}.json.bz2'.format(chrom)
-    path = '/home/llong/Downloads/refsnp-chr{}.json.bz2'.format(chrom)
+    path = '../data/refsnp/refsnp-chr{}.json.bz2'.format(chrom)
     if not os.path.exists(path):
-        print('Beginning file download with urllib2...')
+        logging.info('Beginning file download with urllib2...')
         urllib.request.urlretrieve(url, path)
-        print('...Finished file download with urllib2.')
+        logging.info('...Finished file download with urllib2.')
 
     # Here we parse through the files:
-    print('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
-    with bz2.BZ2File(path, 'rb') as f_in, open('/home/llong/Downloads/refsnp-chr{}.csv'.format(chrom), 'w') as output:
+    logging.info('Now decompressing and reading JSON.bz2 files with *bz2* and *json* ...')
+    with bz2.BZ2File(path, 'rb') as f_in, open('../output/refsnp-chr{}.csv'.format(chrom), 'w') as output:
         print('dbsnp_id', 'assembly_id', 'assembly_type', 'gene_name', 'gene_abbr', 'entrez_id',
               'dna_change', 'rna', 'rna_type', 'rna_change', 'proteins', 'protein_type', 'aa_change',
               sep='\t', file=output)
@@ -178,9 +179,18 @@ def main(chrom):
 
                                     snp2csv(snp_infos, output)
 
-    print("Finished writing files to CSV.")
+    logging.info("Finished writing files to CSV.")
 
 
 if __name__ == '__main__':
-    for c in chroms:
-        main(c)
+    logging.basicConfig(filename='../output/csv_output.log',
+                    filemode='a',
+                    format='%(asctime)s %(message)s', 
+                    datefmt='%d/%m/%Y %I:%M:%S %p',
+                    level=logging.INFO)
+    try:
+        for c in chroms:
+            main(c)
+    except Exception:
+        logging.error("Fatal error in main loop", exc_info=True)
+    
